@@ -204,14 +204,12 @@ parse_source_script() {
             
             # Create relative path for JSON comparison
             local rel_path="${final_path#$BATCH_DIR/}"
-            echo "rel_path"
             # First check if file is in uploader.json
             if is_in_uploader_json "$rel_path"; then
                 log "🔍 Skipping file already in uploader.json: $rel_path"
                 increment_progress
                 ((JSON_SKIPPED_COUNT++))
-            # Then check if it's already downloaded
-            echo "final_path"
+            # Then check if it's already download
             
             elif [[ -f "$final_path" && -s "$final_path" ]] && grep -qF "$final_path" "$DOWNLOAD_LOG"; then
                 log "🔍 Skipping already downloaded file: $final_path"
