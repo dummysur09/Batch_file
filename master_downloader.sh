@@ -1,18 +1,21 @@
 #!/bin/bash
-# Master Parallel Downloader v3.2
+# Master Parallel Downloader v3.3
 # Disk usage throttling every 40 jobs at 75% storage limit
 # GNU Parallel with enhanced progress bar and internet speed display
+# Added JSON uploader file integration for skipping previously uploaded files
 
 set -o pipefail
-BASE_DIR="/home/co"
+BASE_DIR="/data/data/com.termux/files/home/test"
 SOURCE_DIR="$BASE_DIR/1_source_scripts"
 BATCH_DIR="$BASE_DIR/2_batches"
 LOG_DIR="$BASE_DIR/3_logs"
 DOWNLOAD_LOG="$LOG_DIR/download.log"
 ERROR_LOG="$LOG_DIR/download_errors.log"
+UPLOADER_JSON="$BASE_DIR/uploader.json"
 JOB_LIST=$(mktemp)
 PROGRESS_FILE=$(mktemp)
 STATS_FILE=$(mktemp)
+JSON_SKIPPED_COUNT=0
 
 mkdir -p "$SOURCE_DIR" "$BATCH_DIR" "$LOG_DIR"
 touch "$DOWNLOAD_LOG" "$ERROR_LOG" "$PROGRESS_FILE" "$STATS_FILE"
@@ -132,6 +135,23 @@ log() {
     echo -e "$(date +'%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_DIR/master_downloader.log"
 }
 
+# Function to check if a file is already in the uploader.json
+is_in_uploader_json() {
+    local rel_path=$1
+    
+    # Check if uploader.json exists
+    if [[ ! -f "$UPLOADER_JSON" ]]; then
+        return 1  # File not found, so not in JSON
+    fi
+    
+    # Use grep to check if the file_path exists in the JSON
+    if grep -q "\"file_path\": \"$rel_path\"" "$UPLOADER_JSON"; then
+        return 0  # Found in JSON
+    else
+        return 1  # Not found in JSON
+    fi
+}
+
 parse_source_script() {
     local script_path="$1"
     log "🔎 Parsing source script: $(basename "$script_path")"
@@ -182,7 +202,18 @@ parse_source_script() {
                 final_path="$download_base_dir$current_relative_dir/$filename"
             fi
             
-            if [[ -f "$final_path" && -s "$final_path" ]] && grep -qF "$final_path" "$DOWNLOAD_LOG"; then
+            # Create relative path for JSON comparison
+            local rel_path="${final_path#$BATCH_DIR/}"
+            echo "rel_path"
+            # First check if file is in uploader.json
+            if is_in_uploader_json "$rel_path"; then
+                log "🔍 Skipping file already in uploader.json: $rel_path"
+                increment_progress
+                ((JSON_SKIPPED_COUNT++))
+            # Then check if it's already downloaded
+            echo "final_path"
+            
+            elif [[ -f "$final_path" && -s "$final_path" ]] && grep -qF "$final_path" "$DOWNLOAD_LOG"; then
                 log "🔍 Skipping already downloaded file: $final_path"
                 increment_progress
             else
@@ -259,11 +290,18 @@ submit_jobs_with_disk_check() {
     done < "$JOB_LIST"
 }
 
-log "${BOLD}🚀 Starting Master Downloader v3.2${NC}"
+log "${BOLD}🚀 Starting Master Downloader v3.3${NC}"
 
 if [ -z "$(ls -A "$SOURCE_DIR" 2>/dev/null)" ]; then
     log "${RED}❌ ERROR: The source directory '$SOURCE_DIR' is empty. Please add batch scripts.${NC}"
     exit 1
+fi
+
+# Check if uploader.json exists
+if [[ -f "$UPLOADER_JSON" ]]; then
+    log "${BLUE}📋 Found uploader.json - will check for previously uploaded files${NC}"
+else
+    log "${YELLOW}⚠️ uploader.json not found at $UPLOADER_JSON - will only use download log for skipping${NC}"
 fi
 
 for script in "$SOURCE_DIR"/*; do
@@ -273,6 +311,10 @@ done
 JOB_COUNT=$(wc -l < "$JOB_LIST" 2>/dev/null || echo "0")
 if (( JOB_COUNT > 0 )); then
     log "${GREEN}⚙️  Found $JOB_COUNT new files to download.${NC}"
+    if (( JSON_SKIPPED_COUNT > 0 )); then
+        log "${CYAN}🔍 Skipped $JSON_SKIPPED_COUNT files already in uploader.json${NC}"
+    fi
+    
     CPU_CORES=$(nproc)
     PARALLEL_JOBS=$(( CPU_CORES * 3 ))
     (( PARALLEL_JOBS == 0 )) && PARALLEL_JOBS=1
@@ -290,7 +332,7 @@ if (( JOB_COUNT > 0 )); then
         show_progress_monitor "$JOB_COUNT" &
         progress_pid=$!
         submit_jobs_with_disk_check
-        wait $progress_pid 2>/dev/null
+        wait $progress_ pid 2>/dev/null
     fi
 
     stats=($(cat "$STATS_FILE"))
