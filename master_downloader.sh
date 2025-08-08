@@ -5,7 +5,7 @@
 # Added JSON uploader file integration for skipping previously uploaded files
 
 set -o pipefail
-BASE_DIR="/home/co"
+BASE_DIR="/data/data/com.termux/files/home/test"
 SOURCE_DIR="$BASE_DIR/1_source_scripts"
 BATCH_DIR="$BASE_DIR/2_batches"
 LOG_DIR="$BASE_DIR/3_logs"
@@ -189,6 +189,13 @@ parse_source_script() {
             local filename="${BASH_REMATCH[1]}"
             local url="${BASH_REMATCH[2]}"
             
+            # Skip if it's an mp4 file
+         #   if [[ "$filename" == *.mp4 ]]; then
+              #  log "🔍 Skipping .mp4 file: $filename"
+             #   increment_progress
+              #  continue
+          #  fi
+            
             # Remove potential duplicate path components
             local basename=$(basename "$filename")
             local dirname=$(dirname "$filename")
@@ -204,15 +211,17 @@ parse_source_script() {
             
             # Create relative path for JSON comparison
             local rel_path="${final_path#$BATCH_DIR/}"
+            
             # First check if file is in uploader.json
             if is_in_uploader_json "$rel_path"; then
-                log "🔍 Skipping file already in uploader.json: $rel_path"
+             #   log "🔍 Skipping file already in uploader.json: $rel_path"
                 increment_progress
                 ((JSON_SKIPPED_COUNT++))
-            # Then check if it's already download
+            # Then check if it's already downloaded
+            
             
             elif [[ -f "$final_path" && -s "$final_path" ]] && grep -qF "$final_path" "$DOWNLOAD_LOG"; then
-                log "🔍 Skipping already downloaded file: $final_path"
+               # log "🔍 Skipping already downloaded file: $final_path"
                 increment_progress
             else
                 echo "$url|$final_path" >> "$JOB_LIST"
