@@ -5,7 +5,7 @@
 # Added JSON uploader file integration for skipping previously uploaded files
 
 set -o pipefail
-BASE_DIR="/data/data/com.termux/files/home/test"
+BASE_DIR="/home/co"
 SOURCE_DIR="$BASE_DIR/1_source_scripts"
 BATCH_DIR="$BASE_DIR/2_batches"
 LOG_DIR="$BASE_DIR/3_logs"
