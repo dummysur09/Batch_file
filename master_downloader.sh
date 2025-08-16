@@ -322,24 +322,106 @@ if (( JOB_COUNT > 0 )); then
         log "${CYAN}🔍 Skipped $JSON_SKIPPED_COUNT files already in uploader.json${NC}"
     fi
     
-    CPU_CORES=$(nproc)
-    PARALLEL_JOBS=$(( CPU_CORES * 3 ))
-    (( PARALLEL_JOBS == 0 )) && PARALLEL_JOBS=1
-
-    log "${BLUE}🏎️  Starting parallel download with $PARALLEL_JOBS workers.${NC}"
+    # Optimized for your high-resource Docker environment
+    get_optimal_workers() {
+        local cpu_cores=$(nproc)  # 20 in your case
+        local current_load=$(uptime | awk -F'load average:' '{print $2}' | cut -d, -f1 | xargs | cut -d. -f1)
+        local available_mem_gb=$(free -g | awk '/^Mem:/{print $7}')
+        
+        # Your system has high baseline load (50+), so we need to be careful
+        local safe_cores
+        
+        # Check if we're in Docker (which you are)
+        if [ -f /.dockerenv ]; then
+            # High load detected - be conservative
+            if [ "$current_load" -gt 40 ]; then
+                log "${YELLOW}⚠️  High system load detected ($current_load), using conservative settings${NC}"
+                safe_cores=$(( cpu_cores / 3 ))  # Use only 1/3 of cores when load is high
+            elif [ "$current_load" -gt 20 ]; then
+                safe_cores=$(( cpu_cores / 2 ))  # Use half cores for moderate load
+            else
+                safe_cores=$(( cpu_cores * 70 / 100 ))  # Use 70% for normal load
+            fi
+        else
+            safe_cores=$(( cpu_cores * 80 / 100 ))
+        fi
+        
+        # For your setup: minimum 2, maximum 12 cores (leaving 8 for system)
+        [ $safe_cores -lt 2 ] && safe_cores=2
+        [ $safe_cores -gt 12 ] && safe_cores=12
+        
+        # Memory check - you have plenty (124GB)
+        local mem_limited_jobs=$(( available_mem_gb * 10 ))  # 10 jobs per GB
+        
+        echo $safe_cores
+    }
+    
+    # Get safe CPU count based on current system state
+    CPU_CORES=$(get_optimal_workers)
+    
+    # Dynamic multiplier based on current load and job count
+    CURRENT_LOAD=$(uptime | awk -F'load average:' '{print $2}' | cut -d, -f1 | xargs | cut -d. -f1)
+    
+    if [ "$CURRENT_LOAD" -gt 40 ]; then
+        # High load: conservative multiplier
+        MULTIPLIER=1.5
+        log "${YELLOW}📊 High system load ($CURRENT_LOAD), using conservative 1.5x multiplier${NC}"
+    elif (( JOB_COUNT < 20 )); then
+        # Few jobs: 2x multiplier
+        MULTIPLIER=2
+    elif (( JOB_COUNT < 100 )); then
+        # Moderate jobs: 2.5x multiplier
+        MULTIPLIER=2.5
+    else
+        # Many jobs: 3x multiplier
+        MULTIPLIER=3
+    fi
+    
+    # Calculate parallel jobs
+    PARALLEL_JOBS=$(awk -v cores="$CPU_CORES" -v mult="$MULTIPLIER" 'BEGIN{printf "%.0f", cores * mult}')
+    
+    # Set reasonable limits for your environment
+    MIN_JOBS=4   # Minimum parallel jobs
+    MAX_JOBS=30  # Maximum parallel jobs (conservative for Docker)
+    
+    [ $PARALLEL_JOBS -lt $MIN_JOBS ] && PARALLEL_JOBS=$MIN_JOBS
+    [ $PARALLEL_JOBS -gt $MAX_JOBS ] && PARALLEL_JOBS=$MAX_JOBS
+    
+    # Allow override via environment variable
+    if [ -n "$FORCE_PARALLEL_JOBS" ]; then
+        PARALLEL_JOBS=$FORCE_PARALLEL_JOBS
+        log "${YELLOW}📌 Using forced parallel jobs: $PARALLEL_JOBS${NC}"
+    fi
+    
+    # Log system info
+    log "${BLUE}🏎️  System Status:${NC}"
+    log "   CPU: $(nproc) cores available, using $CPU_CORES cores"
+    log "   Load: $CURRENT_LOAD (1-min average)"
+    log "   Memory: $(free -h | awk '/^Mem:/{print $7}') available"
+    log "   Parallel workers: $PARALLEL_JOBS (${MULTIPLIER}x multiplier)"
     echo
 
     if command -v parallel >/dev/null 2>&1; then
         show_progress_monitor "$JOB_COUNT" &
         progress_pid=$!
-        submit_jobs_with_disk_check | parallel --colsep "\\|" -j "$PARALLEL_JOBS" --no-notice download_file {1} {2}
+        
+        # Optimized GNU Parallel settings for your high-resource environment
+        submit_jobs_with_disk_check | nice -n 10 parallel --colsep "\\|" \
+            -j "$PARALLEL_JOBS" \
+            --no-notice \
+            --memfree 2G \
+            --load 80 \
+            --delay 0.1 \
+            --retries 3 \
+            download_file {1} {2}
+        
         wait $progress_pid 2>/dev/null
     else
         log "${YELLOW}⚠️  GNU Parallel not found, running sequentially...${NC}"
         show_progress_monitor "$JOB_COUNT" &
         progress_pid=$!
         submit_jobs_with_disk_check
-        wait $progress_ pid 2>/dev/null
+        wait $progress_pid 2>/dev/null
     fi
 
     stats=($(cat "$STATS_FILE"))
