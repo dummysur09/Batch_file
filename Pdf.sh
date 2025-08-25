@@ -1,11 +1,11 @@
 #!/bin/bash
-# Master Parallel Downloader v3.3
-# Disk usage throttling every 40 jobs at 75% storage limit
+# Master Parallel Downloader v3.4
+# Disk usage throttling every 10 jobs at 75% storage limit
 # GNU Parallel with enhanced progress bar and internet speed display
 # Added JSON uploader file integration for skipping previously uploaded files
 
 set -o pipefail
-BASE_DIR="/data/data/com.termux/files/home/test"
+BASE_DIR="/home/co"
 SOURCE_DIR="$BASE_DIR/1_source_scripts"
 BATCH_DIR="$BASE_DIR/2_batches"
 LOG_DIR="$BASE_DIR/3_logs"
@@ -255,7 +255,7 @@ download_file() {
     # Create parent directory
     mkdir -p "$(dirname "$final_path")"
     
-    if yt-dlp --concurrent-fragments 32 --no-warnings --retries 3 --console-title --progress -o "$final_path" "$url" 2>/dev/null ; then
+    if yt-dlp --concurrent-fragments 64 --no-warnings --retries 3 --console-title --progress -o "$final_path" "$url" 2>/dev/null ; then
         if [[ -f "$final_path" && -s "$final_path" ]]; then
             echo "$final_path" >> "$DOWNLOAD_LOG"
             local size=$(stat -f%z "$final_path" 2>/dev/null || stat -c%s "$final_path" 2>/dev/null || echo 0)
@@ -278,7 +278,7 @@ submit_jobs_with_disk_check() {
     local count=0
     while IFS="|" read -r url final_path; do
         ((count++))
-        if (( count % 40 == 0 )); then
+        if (( count % 10 == 0 )); then
             while true; do
                 local usage=$(check_disk_usage)
                 if (( usage >= 75 )); then
@@ -297,7 +297,7 @@ submit_jobs_with_disk_check() {
     done < "$JOB_LIST"
 }
 
-log "${BOLD}🚀 Starting Master Downloader v3.3${NC}"
+log "${BOLD}🚀 Starting Master Downloader v3.4${NC}"
 
 if [ -z "$(ls -A "$SOURCE_DIR" 2>/dev/null)" ]; then
     log "${RED}❌ ERROR: The source directory '$SOURCE_DIR' is empty. Please add batch scripts.${NC}"
