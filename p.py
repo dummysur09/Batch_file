@@ -70,7 +70,7 @@ def get_telegram_link(channel_id, message_id):
     if isinstance(channel_id, str) and channel_id.startswith('-100'):
         channel_id_num = channel_id[4:]
     elif isinstance(channel_id, int) and channel_id < 0:
-        channel_id_num = str(abs(channel_id))[4:]
+        channel_id_num = str(abs(channel_id))[3:]
     else:
         channel_id_num = str(channel_id)
     return f"https://t.me/c/{channel_id_num}/{message_id}"
